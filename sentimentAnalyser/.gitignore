@@ -1,0 +1,19 @@
+# Environment Variables (Sensitive Data)
+.env
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# Data and Logs
+data/
+*.log
+*.sqlite
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store

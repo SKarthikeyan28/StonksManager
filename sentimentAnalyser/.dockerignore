@@ -1,0 +1,17 @@
+# Ignore Git history
+.git
+.gitignore
+
+# Ignore local secrets - very important for security
+.env
+
+# Ignore local environments and caches
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Ignore documentation and CI configs not needed in the container
+README.md
+.github/
+.vscode/
