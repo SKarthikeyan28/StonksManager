@@ -24,8 +24,8 @@ jobs:
       - name: Build
         uses: docker/build-push-action@v5
         with:
-          context: ./sentimentAnalyser
-          file: ./sentimentAnalyser/Dockerfile
+          context: ./sentimentAnalyser_service
+          file: ./sentimentAnalyser_service/Dockerfile
           push: false
           tags: stonksmanager:latest
           cache-from: type=gha
