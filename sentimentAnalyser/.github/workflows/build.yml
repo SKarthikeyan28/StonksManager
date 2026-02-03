@@ -1,0 +1,32 @@
+name: Docker Build Check
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the repository code
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Step 3: Run the build command
+      - name: Build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./sentimentAnalyser
+          file: ./sentimentAnalyser/Dockerfile
+          push: false
+          tags: stonksmanager:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
