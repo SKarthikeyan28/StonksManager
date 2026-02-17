@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## General Rules
+
+- Always confirm with the user before writing code, editing files, or running terminal commands.
+- When implementing changes, explain the reasoning behind each decision — why this approach, why this tool/library, and how it fits into the overall architecture. Treat this as a learning walkthrough, not just code delivery.
+
 ## Project Overview
 
 StonksManager is a stock sentiment analysis tool that combines Reddit post sentiment with stock price data. It provides both a Flask web interface and a CLI tool.
@@ -46,3 +51,4 @@ Required in `.env` (not committed):
 
 Set by Docker/Flask config:
 - `FLASK_APP=src/app.py`, `PYTHONPATH=/app/src`, `PYTHONUNBUFFERED=1`
+
