@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from celery import Celery
 from sqlalchemy.dialects.postgresql import insert
@@ -15,12 +15,16 @@ logger = logging.getLogger(__name__)
 # Create the Celery app instance.
 # The first argument ("data_service") is the app name — used in logs and monitoring.
 # broker= tells Celery where the message queue lives (Redis).
-celery_app = Celery("data_service", broker=settings.REDIS_URL)
+# backend= tells Celery where to store task results (return values, status).
+# We use Redis for both broker and backend — broker handles the message queue,
+# backend stores the results so callers can retrieve them via result.get().
+celery_app = Celery("data_service", broker=settings.REDIS_URL, backend=settings.REDIS_URL)
 
 # Route tasks to the "data" queue so only data-workers pick them up.
-# Without this, tasks go to the default queue where any worker could grab them.
+# We match the explicit task name ("fetch_stock_data"), not the module path,
+# because @celery_app.task(name="fetch_stock_data") overrides the auto-generated name.
 celery_app.conf.task_routes = {
-    "src.worker.*": {"queue": "data"},
+    "fetch_stock_data": {"queue": "data"},
 }
 
 fetcher = StockDataFetcher()
@@ -55,28 +59,30 @@ def fetch_stock_data(symbol: str) -> dict:
 
     try:
         # --- 1. Fetch and upsert metadata ---
-        meta = fetcher.fetch_meta(symbol)
-
-        # "Upsert" = INSERT if the symbol is new, UPDATE if it already exists.
-        # We use PostgreSQL's INSERT ... ON CONFLICT ... DO UPDATE for this.
-        # Why upsert? Because if someone analyzes AAPL twice, we want to update
-        # the existing row (with fresh last_fetched), not crash on a duplicate key.
-        meta_stmt = insert(StockMeta).values(
-            symbol=meta["symbol"],
-            name=meta["name"],
-            sector=meta["sector"],
-            currency=meta["currency"],
-            last_fetched=datetime.utcnow(),
-        ).on_conflict_do_update(
-            index_elements=["symbol"],
-            set_={
-                "name": meta["name"],
-                "sector": meta["sector"],
-                "currency": meta["currency"],
-                "last_fetched": datetime.utcnow(),
-            },
-        )
-        session.execute(meta_stmt)
+        # Wrapped in try/except because ticker.info scrapes Yahoo's website and
+        # can fail (empty responses, rate limits). Metadata is nice-to-have but
+        # not critical — OHLCV data is what other services actually need.
+        meta = {"symbol": symbol, "name": None, "sector": None, "currency": None}
+        try:
+            meta = fetcher.fetch_meta(symbol)
+            meta_stmt = insert(StockMeta).values(
+                symbol=meta["symbol"],
+                name=meta["name"],
+                sector=meta["sector"],
+                currency=meta["currency"],
+                last_fetched=datetime.now(timezone.utc),
+            ).on_conflict_do_update(
+                index_elements=["symbol"],
+                set_={
+                    "name": meta["name"],
+                    "sector": meta["sector"],
+                    "currency": meta["currency"],
+                    "last_fetched": datetime.now(timezone.utc),
+                },
+            )
+            session.execute(meta_stmt)
+        except Exception as e:
+            logger.warning(f"Failed to fetch metadata for {symbol}, continuing with OHLCV: {e}")
 
         # --- 2. Fetch and upsert OHLCV data ---
         records = fetcher.fetch_ohlcv(symbol)
