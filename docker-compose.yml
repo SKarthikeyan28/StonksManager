@@ -1,0 +1,48 @@
+version: "3.8"
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-stonksmanager}
+      POSTGRES_USER: ${POSTGRES_USER:-stonks}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stonks_dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stonks}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  data-worker:
+    build:
+      context: ./data_service
+      dockerfile: Dockerfile
+    command: celery -A src.worker worker --loglevel=info --queues=data
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql://${POSTGRES_USER:-stonks}:${POSTGRES_PASSWORD:-stonks_dev}@postgres:5432/${POSTGRES_DB:-stonksmanager}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+volumes:
+  redis_data:
+  postgres_data:
