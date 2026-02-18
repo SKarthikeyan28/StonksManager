@@ -58,34 +58,32 @@ def fetch_stock_data(symbol: str) -> dict:
     session = SessionLocal()
 
     try:
-        # --- 1. Fetch and upsert metadata ---
-        # Wrapped in try/except because ticker.info scrapes Yahoo's website and
-        # can fail (empty responses, rate limits). Metadata is nice-to-have but
-        # not critical — OHLCV data is what other services actually need.
-        meta = {"symbol": symbol, "name": None, "sector": None, "currency": None}
-        try:
-            meta = fetcher.fetch_meta(symbol)
-            meta_stmt = insert(StockMeta).values(
-                symbol=meta["symbol"],
-                name=meta["name"],
-                sector=meta["sector"],
-                currency=meta["currency"],
-                last_fetched=datetime.now(timezone.utc),
-            ).on_conflict_do_update(
-                index_elements=["symbol"],
-                set_={
-                    "name": meta["name"],
-                    "sector": meta["sector"],
-                    "currency": meta["currency"],
-                    "last_fetched": datetime.now(timezone.utc),
-                },
-            )
-            session.execute(meta_stmt)
-        except Exception as e:
-            logger.warning(f"Failed to fetch metadata for {symbol}, continuing with OHLCV: {e}")
+        # --- 1. Fetch OHLCV + metadata in a single API call ---
+        # We use one request to get both price history and stock metadata.
+        # This avoids Yahoo Finance rate limiting from rapid back-to-back calls.
+        result = fetcher.fetch_stock_data(symbol)
+        records = result["records"]
+        meta = result["meta"]
 
-        # --- 2. Fetch and upsert OHLCV data ---
-        records = fetcher.fetch_ohlcv(symbol)
+        # --- 2. Upsert metadata ---
+        meta_stmt = insert(StockMeta).values(
+            symbol=meta["symbol"],
+            name=meta["name"],
+            sector=meta["sector"],
+            currency=meta["currency"],
+            last_fetched=datetime.now(timezone.utc),
+        ).on_conflict_do_update(
+            index_elements=["symbol"],
+            set_={
+                "name": meta["name"],
+                "sector": meta["sector"],
+                "currency": meta["currency"],
+                "last_fetched": datetime.now(timezone.utc),
+            },
+        )
+        session.execute(meta_stmt)
+
+        # --- 3. Upsert OHLCV data ---
 
         # Bulk upsert: insert all rows, skip any that already exist (same symbol+date).
         # ON CONFLICT DO UPDATE ensures we overwrite with the latest data — Yahoo Finance
